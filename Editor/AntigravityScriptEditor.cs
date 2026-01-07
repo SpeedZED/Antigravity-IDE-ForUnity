@@ -20,7 +20,6 @@ public class AntigravityScriptEditor : IExternalCodeEditor
     static AntigravityScriptEditor()
     {
         CodeEditor.Register(new AntigravityScriptEditor());
-        
         string current = EditorPrefs.GetString("kScriptsDefaultApp");
         if (IsAntigravityInstalled() && !current.Contains(EditorName))
         {
@@ -78,7 +77,7 @@ public class AntigravityScriptEditor : IExternalCodeEditor
     public bool OpenProject(string filePath, int line, int column)
     {
         string installation = CodeEditor.CurrentEditorInstallation;
-        
+
         // If no specific file, just open the project folder
         if (string.IsNullOrEmpty(filePath))
         {
@@ -92,13 +91,21 @@ public class AntigravityScriptEditor : IExternalCodeEditor
         }
         else
         {
-            arguments = $"\"{filePath}:{line}:{column}\"";
+            // FIX APPLIED HERE: Only append line number if it's valid
+            if (line > 0) 
+            { 
+                arguments = $"\"{filePath}:{line}:{column}\""; 
+            } 
+            else 
+            { 
+                arguments = $"\"{filePath}\""; 
+            }
         }
 
         try
         {
             Process process = new Process();
-            
+
             // Handle macOS .app bundles specifically
             if (installation.EndsWith(".app") && Application.platform == RuntimePlatform.OSXEditor)
             {
@@ -144,7 +151,6 @@ public class AntigravityScriptEditor : IExternalCodeEditor
             };
             return true;
         }
-
         installation = default;
         return false;
     }
