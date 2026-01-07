@@ -38,8 +38,29 @@ public class AntigravityScriptEditor : IExternalCodeEditor
     {
         if (path.EndsWith(".app"))
         {
-            string executable = Path.Combine(path, "Contents", "MacOS", "Antigravity");
-            return File.Exists(executable) ? executable : path;
+            string macOSDir = Path.Combine(path, "Contents", "MacOS");
+            
+            // Try common executable names for Electron apps
+            string[] possibleNames = { "Electron", "Antigravity", "antigravity" };
+            
+            foreach (var name in possibleNames)
+            {
+                string executable = Path.Combine(macOSDir, name);
+                if (File.Exists(executable))
+                {
+                    return executable;
+                }
+            }
+            
+            // If no known name found, try to find any executable in the MacOS folder
+            if (Directory.Exists(macOSDir))
+            {
+                var files = Directory.GetFiles(macOSDir);
+                if (files.Length > 0)
+                {
+                    return files[0]; // Return the first file found
+                }
+            }
         }
         return path;
     }
@@ -87,52 +108,63 @@ public class AntigravityScriptEditor : IExternalCodeEditor
             ProjectGeneration.Sync();
         }
 
-        // Build arguments: always open the solution/project directory first
-        // Then optionally add the specific file to open
-        StringBuilder args = new StringBuilder();
-        
-        // First argument: the solution file or project directory for workspace context
-        args.Append($"\"{solutionPath}\"");
-        
-        // Second argument: the specific file to open (if provided)
-        if (!string.IsNullOrEmpty(filePath) && filePath != projectDirectory)
+        // Convert file path to absolute path if it's relative
+        if (!string.IsNullOrEmpty(filePath) && !Path.IsPathRooted(filePath))
         {
-            args.Append($" \"{filePath}\"");
-            
-            // Add line and column if provided (for goto functionality)
+            filePath = Path.Combine(projectDirectory, filePath);
+        }
+
+        // Build arguments - VS Code style:
+        // First: project directory for workspace context
+        // Then: -g file:line:column for goto functionality
+        var argsList = new List<string>();
+        
+        // Add the project directory as the workspace
+        argsList.Add($"\"{projectDirectory}\"");
+        
+        // Add the file with goto flag if a file is specified
+        if (!string.IsNullOrEmpty(filePath) && File.Exists(filePath))
+        {
             if (line > 0)
             {
-                args.Append($" --goto {line}");
-                if (column > 0)
-                {
-                    args.Append($":{column}");
-                }
+                // VS Code style: -g file:line:column
+                argsList.Add("-g");
+                argsList.Add($"\"{filePath}:{line}:{(column > 0 ? column : 1)}\"");
+            }
+            else
+            {
+                // Just open the file
+                argsList.Add($"\"{filePath}\"");
             }
         }
+
+        string arguments = string.Join(" ", argsList);
+        
+        UnityEngine.Debug.Log($"[Antigravity] Opening: {arguments}");
 
         try
         {
             Process process = new Process();
-
-            if (installation.EndsWith(".app") && Application.platform == RuntimePlatform.OSXEditor)
-            {
-                process.StartInfo.FileName = "/usr/bin/open";
-                process.StartInfo.Arguments = $"-a \"{installation}\" --args {args}";
-            }
-            else
-            {
-                process.StartInfo.FileName = GetExecutablePath(installation);
-                process.StartInfo.Arguments = args.ToString();
-            }
-
+            
+            // On macOS, directly invoke the executable inside the .app bundle
+            // This ensures arguments are passed correctly
+            string executablePath = GetExecutablePath(installation);
+            
+            process.StartInfo.FileName = executablePath;
+            process.StartInfo.Arguments = arguments;
             process.StartInfo.UseShellExecute = false;
             process.StartInfo.CreateNoWindow = true;
+            process.StartInfo.RedirectStandardOutput = false;
+            process.StartInfo.RedirectStandardError = false;
+            
+            UnityEngine.Debug.Log($"[Antigravity] Launching: {executablePath} {arguments}");
+            
             process.Start();
             return true;
         }
         catch (Exception e)
         {
-            UnityEngine.Debug.LogError($"Failed to open Antigravity: {e.Message}");
+            UnityEngine.Debug.LogError($"Failed to open Antigravity: {e.Message}\nInstallation: {installation}");
             return false;
         }
     }
@@ -158,7 +190,3 @@ public class AntigravityScriptEditor : IExternalCodeEditor
             };
             return true;
         }
-        installation = default;
-        return false;
-    }
-}
