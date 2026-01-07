@@ -78,15 +78,37 @@ public class AntigravityScriptEditor : IExternalCodeEditor
     public bool OpenProject(string filePath, int line, int column)
     {
         string installation = CodeEditor.CurrentEditorInstallation;
+        string projectDirectory = Directory.GetCurrentDirectory();
+        string solutionPath = Path.Combine(projectDirectory, $"{Path.GetFileName(projectDirectory)}.sln");
 
-        if (string.IsNullOrEmpty(filePath))
+        // Ensure the solution file exists
+        if (!File.Exists(solutionPath))
         {
-            filePath = Directory.GetCurrentDirectory();
+            ProjectGeneration.Sync();
         }
 
-        // FIX: Removed the :line:column logic entirely.
-        // The IDE does not support it and it causes "File Not Found" errors.
-        string arguments = $"\"{filePath}\"";
+        // Build arguments: always open the solution/project directory first
+        // Then optionally add the specific file to open
+        StringBuilder args = new StringBuilder();
+        
+        // First argument: the solution file or project directory for workspace context
+        args.Append($"\"{solutionPath}\"");
+        
+        // Second argument: the specific file to open (if provided)
+        if (!string.IsNullOrEmpty(filePath) && filePath != projectDirectory)
+        {
+            args.Append($" \"{filePath}\"");
+            
+            // Add line and column if provided (for goto functionality)
+            if (line > 0)
+            {
+                args.Append($" --goto {line}");
+                if (column > 0)
+                {
+                    args.Append($":{column}");
+                }
+            }
+        }
 
         try
         {
@@ -95,12 +117,12 @@ public class AntigravityScriptEditor : IExternalCodeEditor
             if (installation.EndsWith(".app") && Application.platform == RuntimePlatform.OSXEditor)
             {
                 process.StartInfo.FileName = "/usr/bin/open";
-                process.StartInfo.Arguments = $"-a \"{installation}\" -n --args {arguments}";
+                process.StartInfo.Arguments = $"-a \"{installation}\" --args {args}";
             }
             else
             {
                 process.StartInfo.FileName = GetExecutablePath(installation);
-                process.StartInfo.Arguments = arguments;
+                process.StartInfo.Arguments = args.ToString();
             }
 
             process.StartInfo.UseShellExecute = false;
